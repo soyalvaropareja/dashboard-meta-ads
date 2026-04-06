@@ -1,5 +1,5 @@
 import type { InsightRow } from '../types/meta'
-import { extractPurchases, extractRoas, extractCostPerPurchase } from '../types/meta'
+import { extractRoas, getPrimaryResult } from '../types/meta'
 import type { AuditRecommendation, HealthStatus, HealthSummary } from '../types/audit'
 import { AUDIT_THRESHOLDS as T } from '../types/audit'
 
@@ -23,18 +23,18 @@ function getId(row: InsightRow, level: EntityLevel): string {
 export function getRowHealth(row: InsightRow): HealthStatus {
   const spend = parseFloat(row.spend) || 0
   const roas = extractRoas(row)
-  const purchases = extractPurchases(row)
+  const result = getPrimaryResult(row)
   const ctr = parseFloat(row.ctr) || 0
   const frequency = parseFloat(row.frequency) || 0
 
   // Critical: losing money or spending with zero return
   if (roas > 0 && roas < T.ROAS_CRITICAL) return 'critical'
-  if (spend > T.SPEND_NO_CONVERSION_CRITICAL && purchases === 0) return 'critical'
+  if (spend > T.SPEND_NO_CONVERSION_CRITICAL && result.value === 0) return 'critical'
   if (frequency > T.FREQUENCY_CRITICAL) return 'critical'
 
   // Warning
   if (roas > 0 && roas < T.ROAS_WARNING) return 'warning'
-  if (spend > T.SPEND_NO_CONVERSION_WARNING && purchases === 0) return 'warning'
+  if (spend > T.SPEND_NO_CONVERSION_WARNING && result.value === 0) return 'warning'
   if (ctr > 0 && ctr < T.CTR_CRITICAL) return 'warning'
   if (frequency > T.FREQUENCY_WARNING) return 'warning'
 
@@ -44,7 +44,7 @@ export function getRowHealth(row: InsightRow): HealthStatus {
 
   // Good
   if (roas >= T.ROAS_GOOD) return 'good'
-  if (ctr >= T.CTR_GOOD && purchases > 0) return 'good'
+  if (ctr >= T.CTR_GOOD && result.value > 0) return 'good'
 
   return 'good'
 }
@@ -76,7 +76,7 @@ export function auditRows(rows: InsightRow[], level: EntityLevel): AuditRecommen
     const name = getName(row, level)
     const spend = parseFloat(row.spend) || 0
     const roas = extractRoas(row)
-    const purchases = extractPurchases(row)
+    const result = getPrimaryResult(row)
     const ctr = parseFloat(row.ctr) || 0
     const cpc = parseFloat(row.cpc) || 0
     const cpm = parseFloat(row.cpm) || 0
@@ -99,8 +99,8 @@ export function auditRows(rows: InsightRow[], level: EntityLevel): AuditRecommen
       })
     }
 
-    // Rule 2: Spend without conversions
-    if (purchases === 0 && spend > T.SPEND_NO_CONVERSION_WARNING) {
+    // Rule 2: Spend without results (based on campaign objective)
+    if (result.value === 0 && spend > T.SPEND_NO_CONVERSION_WARNING) {
       const sev = spend > T.SPEND_NO_CONVERSION_CRITICAL ? 'critical' : 'warning'
       recs.push({
         id: `no-conv-${id}`,
@@ -108,10 +108,14 @@ export function auditRows(rows: InsightRow[], level: EntityLevel): AuditRecommen
         entityId: id,
         entityName: name,
         entityLevel: level,
-        title: 'Gasto sin conversiones',
-        description: `$${spend.toFixed(0)} gastados sin ninguna compra registrada.`,
-        action: 'Verifica que el pixel esté disparando correctamente y revisa la página de destino.',
-        metric: 'Compras',
+        title: `Gasto sin resultados`,
+        description: `$${spend.toFixed(0)} gastados sin ningún resultado (${result.label.toLowerCase()}) registrado.`,
+        action: result.objective === 'messages'
+          ? 'Revisa que el CTA apunte al canal de mensajes correcto y que la audiencia esté bien segmentada.'
+          : result.objective === 'leads'
+          ? 'Revisa el formulario de leads y la segmentación de audiencia.'
+          : 'Verifica que el pixel esté disparando correctamente y revisa la página de destino.',
+        metric: result.label,
         metricValue: 0,
       })
     }
@@ -209,7 +213,7 @@ export function auditRows(rows: InsightRow[], level: EntityLevel): AuditRecommen
         entityName: name,
         entityLevel: level,
         title: 'Buen CTR pero bajo ROAS',
-        description: `CTR de ${ctr.toFixed(2)}% (bueno) pero ROAS de ${roas.toFixed(2)}x (bajo). La gente clickea pero no compra.`,
+        description: `CTR de ${ctr.toFixed(2)}% (bueno) pero ROAS de ${roas.toFixed(2)}x (bajo). La gente clickea pero no convierte.`,
         action: 'El problema probablemente está en la landing page, el precio, o la experiencia post-click.',
         metric: 'ROAS',
         metricValue: roas,

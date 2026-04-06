@@ -9,7 +9,7 @@ import { SkeletonTable } from '../common/SkeletonLoader'
 import { HealthBanner } from '../common/HealthBanner'
 import { AuditPanel } from '../common/AuditPanel'
 import type { InsightRow } from '../../types/meta'
-import { extractPurchases, extractCostPerPurchase, extractRoas } from '../../types/meta'
+import { extractRoas, getPrimaryResult } from '../../types/meta'
 import { getHealthSummary, auditRows } from '../../lib/auditEngine'
 import type { AuditRecommendation } from '../../types/audit'
 
@@ -103,21 +103,24 @@ export function AdsTab() {
       sortValue: (row) => parseFloat(row.cpc) || 0,
     },
     {
-      key: 'purchases',
-      label: 'Compras',
-      priority: 'low',
-      render: (row) => extractPurchases(row) || '—',
-      sortValue: (row) => extractPurchases(row),
-    },
-    {
-      key: 'cpp',
-      label: 'Costo/Compra',
+      key: 'results',
+      label: 'Resultados',
       priority: 'low',
       render: (row) => {
-        const v = extractCostPerPurchase(row)
-        return v ? <SensitiveNumber value={v} format="currency" currency={currency} /> : '—'
+        const r = getPrimaryResult(row)
+        return r.value ? <span title={r.label}>{r.value.toLocaleString('es-MX')} <small style={{ color: 'var(--text-secondary)', fontSize: '0.75em' }}>{r.label}</small></span> : '—'
       },
-      sortValue: (row) => extractCostPerPurchase(row),
+      sortValue: (row) => getPrimaryResult(row).value,
+    },
+    {
+      key: 'cost_per_result',
+      label: 'Costo/Resultado',
+      priority: 'low',
+      render: (row) => {
+        const r = getPrimaryResult(row)
+        return r.cost ? <><SensitiveNumber value={r.cost} format="currency" currency={currency} /> <small style={{ color: 'var(--text-secondary)', fontSize: '0.75em' }}>{r.costLabel}</small></> : '—'
+      },
+      sortValue: (row) => getPrimaryResult(row).cost,
     },
     {
       key: 'roas',
